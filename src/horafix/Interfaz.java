@@ -375,10 +375,10 @@ public class Interfaz extends JFrame {
             resultado.append("Errores léxicos    : ").append(totalLex).append("\n");
 
             // Mensajes de errores léxicos del lexer (ERROR_CHAR) — vía ErrorManager
-            java.util.Set<Integer> lineasError = new java.util.HashSet<>();
+            java.util.Set<Integer> lineasLexico = new java.util.HashSet<>();
             for (Token t : listaTokens) {
                 if (t.tipo.equals("ERROR_CHAR")) {
-                    lineasError.add(t.linea);
+                    lineasLexico.add(t.linea);
                     String msg = t.lexema.matches("0[0-9]+")
                         ? ErrorManager.ceroAlInicio(t.linea, t.lexema)
                         : ErrorManager.charInvalido(t.linea, t.lexema);
@@ -386,24 +386,21 @@ public class Interfaz extends JFrame {
                 }
             }
 
-            // Mensajes de errores léxicos detectados por el parser (días, números, keywords)
+            // Mensajes de errores léxicos detectados por el parser (números, keywords)
             for (String err : errLexParser) {
                 resultado.append("  • ").append(err).append("\n");
-                java.util.regex.Matcher m =
-                    java.util.regex.Pattern.compile("línea (\\d+)").matcher(err);
-                if (m.find()) lineasError.add(Integer.parseInt(m.group(1)));
+                extraerLinea(err).ifPresent(lineasLexico::add);
             }
 
             resultado.append("─".repeat(50)).append("\n");
 
             // ── Resultado del análisis sintáctico ─────────────────────────────
+            java.util.Set<Integer> lineasSintaxis = new java.util.HashSet<>();
             if (!errSintPuros.isEmpty()) {
                 resultado.append("Errores sintácticos : ").append(errSintPuros.size()).append("\n");
                 for (String err : errSintPuros) {
                     resultado.append("  • ").append(err).append("\n");
-                    java.util.regex.Matcher m =
-                        java.util.regex.Pattern.compile("línea (\\d+)").matcher(err);
-                    if (m.find()) lineasError.add(Integer.parseInt(m.group(1)));
+                    extraerLinea(err).ifPresent(lineasSintaxis::add);
                 }
             }
             if (totalLex == 0 && errSintPuros.isEmpty()) {
@@ -412,9 +409,6 @@ public class Interfaz extends JFrame {
             } else if (errSintPuros.isEmpty()) {
                 resultado.append("Análisis sintáctico: ✔  Estructura sintáctica válida — corrija los errores léxicos");
             }
-
-            txtResultados.setText(resultado.toString());
-            resaltarLineasError(lineasError);
 
             // Habilitar botones que requieren sintaxis correcta
             ultimosTokens = listaTokens;
@@ -427,42 +421,59 @@ public class Interfaz extends JFrame {
             // ── FASE 3: Análisis semántico ────────────────────────────────────
             // Se ejecuta siempre, independientemente de si hubo errores léxicos
             // o sintácticos, para reportar todos los problemas en una sola pasada.
+            java.util.Set<Integer> lineasSemantico = new java.util.HashSet<>();
             List<String> erroresSemanticos = validarSemantica(listaTokens);
             if (!erroresSemanticos.isEmpty()) {
-                StringBuilder semBuilder = new StringBuilder();
-                semBuilder.append("─".repeat(50)).append("\n");
-                semBuilder.append("Errores semánticos : ")
-                          .append(erroresSemanticos.size()).append("\n");
-                for (String err : erroresSemanticos)
-                    semBuilder.append("  • ").append(err).append("\n");
-                txtResultados.append(semBuilder.toString());
+                resultado.append("─".repeat(50)).append("\n");
+                resultado.append("Errores semánticos : ").append(erroresSemanticos.size()).append("\n");
+                for (String err : erroresSemanticos) {
+                    resultado.append("  • ").append(err).append("\n");
+                    extraerLinea(err).ifPresent(lineasSemantico::add);
+                }
+            } else if (sintaxisOk) {
+                resultado.append("─".repeat(50)).append("\n");
+                resultado.append("Análisis semántico  : ✔  Sin inconsistencias detectadas");
             }
+
+            txtResultados.setText(resultado.toString());
+            // Prioridad de color cuando una línea tiene errores de varias fases:
+            // léxico (más grave) > sintáctico > semántico (se pinta primero para
+            // que los siguientes lo sobrescriban en caso de solapamiento).
+            java.util.Map<Integer, Color> lineasConColor = new java.util.LinkedHashMap<>();
+            lineasSemantico.forEach(l -> lineasConColor.put(l, new Color(200, 235, 205)));
+            lineasSintaxis.forEach(l  -> lineasConColor.put(l, new Color(255, 224, 178)));
+            lineasLexico.forEach(l    -> lineasConColor.put(l, new Color(255, 200, 200)));
+            resaltarLineasError(lineasConColor);
 
         } catch (Exception e) {
             txtResultados.setText("Error inesperado: " + e.getMessage());
         }
     }
 
+    /** Extrae el número de línea (base 1) de un mensaje "... en línea N ...", si lo tiene. */
+    private java.util.Optional<Integer> extraerLinea(String mensaje) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("línea (\\d+)").matcher(mensaje);
+        return m.find() ? java.util.Optional.of(Integer.parseInt(m.group(1))) : java.util.Optional.empty();
+    }
+
     /**
-     * Resalta en rojo claro las líneas del editor que contienen errores léxicos
-     * o sintácticos. Se invoca al final de {@link #analizar()} con el conjunto
-     * de números de línea extraídos de todos los mensajes de error.
+     * Resalta las líneas del editor que contienen errores, con un color distinto
+     * según la fase que los detectó (léxico, sintáctico o semántico) — el mismo
+     * código de colores que usa la Tabla de Símbolos y el Catálogo de Errores.
+     * Se invoca al final de {@link #analizar()}.
      * Se limpia automáticamente al borrar el código o al re-analizar sin errores.
      *
-     * @param lineas conjunto de números de línea a resaltar (base 1)
+     * @param lineasConColor mapa línea (base 1) → color de resaltado
      */
-    private void resaltarLineasError(java.util.Set<Integer> lineas) {
+    private void resaltarLineasError(java.util.Map<Integer, Color> lineasConColor) {
         txtEntrada.getHighlighter().removeAllHighlights();
-        if (lineas.isEmpty()) return;
 
-        javax.swing.text.Highlighter.HighlightPainter painter =
-            new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(
-                new Color(255, 200, 200));
-
-        for (int linea : lineas) {
+        for (var entrada : lineasConColor.entrySet()) {
+            javax.swing.text.Highlighter.HighlightPainter painter =
+                new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(entrada.getValue());
             try {
-                int ini = txtEntrada.getLineStartOffset(linea - 1);
-                int fin = txtEntrada.getLineEndOffset(linea - 1);
+                int ini = txtEntrada.getLineStartOffset(entrada.getKey() - 1);
+                int fin = txtEntrada.getLineEndOffset(entrada.getKey() - 1);
                 txtEntrada.getHighlighter().addHighlight(ini, fin, painter);
             } catch (Exception ignored) {}
         }
@@ -736,12 +747,7 @@ public class Interfaz extends JFrame {
         // Área central: grilla + recomendaciones
         JPanel areaHorario = new JPanel(new BorderLayout(0, 0));
         if (materias.isEmpty()) {
-            JLabel lblVacio = new JLabel(
-                "No se encontraron declaraciones MATERIA — agrega al menos una para ver el horario.",
-                SwingConstants.CENTER);
-            lblVacio.setFont(new Font("SansSerif", Font.ITALIC, 14));
-            lblVacio.setForeground(new Color(120, 120, 120));
-            areaHorario.add(lblVacio, BorderLayout.CENTER);
+            areaHorario.add(construirEstadoVacio(), BorderLayout.CENTER);
         } else {
             int minH = Integer.MAX_VALUE, maxH = Integer.MIN_VALUE;
             for (String[] m : materias) {
@@ -1066,16 +1072,20 @@ public class Interfaz extends JFrame {
                 String dia = dias.get(col);
                 boolean horaExtra  = tieneHoraExtra(creditos, dia);
                 int     finEfectivo = horaExtra ? fin + 1 : fin;
+                boolean primerDia   = (col == 0);
 
                 int x = TIME_W + col * COL_W + PAD;
                 int y = HEAD_H + (inicio - minHour) * ROW_H + PAD;
                 int w = COL_W - 2 * PAD;
                 int h = (finEfectivo - inicio) * ROW_H - 2 * PAD;
 
-                // Etiqueta del día en la tarjeta (solo mostrar créditos en el día inicio)
-                String etiquetaCreds = (col == 0) ? creditos + " créditos" : null;
+                // Créditos y estado solo se muestran en el día de inicio: evita
+                // repetir la misma info 3-5 veces y deja las celdas de 1 hora
+                // con espacio suficiente para su contenido (ver crearTarjetaMateria).
+                String etiquetaCreds  = primerDia ? creditos + " créditos" : null;
+                String estadoMostrado = primerDia ? estado : null;
                 JPanel card = crearTarjetaMateria(nombre, inicio, finEfectivo,
-                                                  acento, estado, etiquetaCreds, horaExtra);
+                                                  acento, estadoMostrado, etiquetaCreds, horaExtra);
                 card.setBounds(x, y, w, h);
                 panel.add(card);
             }
@@ -1084,6 +1094,68 @@ public class Interfaz extends JFrame {
         return panel;
     }
 
+    /** Panel centrado que se muestra cuando no hay ninguna declaración MATERIA que dibujar. */
+    private JPanel construirEstadoVacio() {
+        JPanel wrap = new JPanel(new GridBagLayout());
+        wrap.setBackground(Color.WHITE);
+
+        JPanel contenido = new JPanel();
+        contenido.setBackground(Color.WHITE);
+        contenido.setLayout(new BoxLayout(contenido, BoxLayout.Y_AXIS));
+
+        JLabel lblIcono = new JLabel("🗓");
+        lblIcono.setFont(new Font("SansSerif", Font.PLAIN, 40));
+        lblIcono.setAlignmentX(Component.CENTER_ALIGNMENT);
+        contenido.add(lblIcono);
+
+        contenido.add(Box.createVerticalStrut(10));
+        JLabel lblTitulo = new JLabel("Todavía no hay horario que mostrar");
+        lblTitulo.setFont(new Font("SansSerif", Font.BOLD, 15));
+        lblTitulo.setForeground(new Color(70, 80, 105));
+        lblTitulo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        contenido.add(lblTitulo);
+
+        contenido.add(Box.createVerticalStrut(4));
+        // Mensaje corto (evita depender del wrap de HTML de Swing, que en
+        // frases largas puede partir una palabra a la mitad en vez de cortar
+        // en el espacio anterior) + un "chip" de ejemplo aparte, en fuente
+        // monoespaciada, como si fuera código.
+        JLabel lblSub = new JLabel("Agrega al menos una declaración MATERIA");
+        lblSub.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        lblSub.setForeground(new Color(150, 155, 170));
+        lblSub.setAlignmentX(Component.CENTER_ALIGNMENT);
+        contenido.add(lblSub);
+
+        contenido.add(Box.createVerticalStrut(12));
+        JLabel lblEjemplo = new JLabel("MATERIA calculo 8-10 CREDITOS 4");
+        lblEjemplo.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        lblEjemplo.setForeground(new Color(70, 80, 105));
+        lblEjemplo.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(222, 226, 236), 1, true),
+            BorderFactory.createEmptyBorder(5, 12, 5, 12)));
+        lblEjemplo.setOpaque(true);
+        lblEjemplo.setBackground(new Color(248, 249, 252));
+        lblEjemplo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        contenido.add(lblEjemplo);
+
+        wrap.add(contenido);
+        return wrap;
+    }
+
+    /** Color del texto de estado según su ícono (✔ aprobada, ✘ reprobada, → cursando). */
+    private Color colorParaEstado(String estado) {
+        if (estado.contains("✔")) return new Color(25, 120, 40);
+        if (estado.contains("✘")) return new Color(170, 30, 30);
+        return new Color(55, 90, 190);
+    }
+
+    /**
+     * Construye la tarjeta visual de una materia dentro de un día de la grilla.
+     *
+     * El contenido se mantiene deliberadamente compacto: estado y créditos se
+     * combinan en una sola línea (en vez de apilarse por separado) para que la
+     * tarjeta quepa sin recortarse incluso en celdas de una sola hora.
+     */
     private JPanel crearTarjetaMateria(String nombre, int inicio, int fin,
                                        Color acento, String estado,
                                        String etiquetaCreds, boolean horaExtra) {
@@ -1096,64 +1168,77 @@ public class Interfaz extends JFrame {
             Math.min(255, acento.getGreen() / 3 + 168),
             Math.min(255, acento.getBlue()  / 3 + 168));
 
+        final int RADIO = 11;
+        final int SOMBRA = 2;
+
         JPanel card = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
-                int w = getWidth(), h = getHeight();
+                // El área visible se encoge SOMBRA px para dejar sitio a una
+                // sombra sutil dentro de los mismos bounds del componente —
+                // así no invade la celda vecina ni el padding (PAD) de la grilla.
+                int w = getWidth() - SOMBRA, h = getHeight() - SOMBRA;
+
+                Graphics2D gs = (Graphics2D) g.create();
+                gs.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                gs.setColor(new Color(20, 30, 60, 28));
+                gs.fillRoundRect(SOMBRA, SOMBRA, w, h, RADIO, RADIO);
+                gs.dispose();
+
                 // Contexto A: fondo + barra de acento.
                 // g2.clip() INTERSECTA con el clip del JScrollPane, nunca lo elimina.
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                                    RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(bgCard);
-                g2.fillRoundRect(0, 0, w, h, 10, 10);
-                g2.clip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 10, 10));
+                g2.fillRoundRect(0, 0, w, h, RADIO, RADIO);
+                g2.clip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, RADIO, RADIO));
                 g2.setColor(acento);
                 g2.fillRect(0, 0, 5, h);
                 g2.dispose();
                 // Contexto B: borde (sin modificar el clip)
                 Graphics2D g3 = (Graphics2D) g.create();
-                g3.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                                    RenderingHints.VALUE_ANTIALIAS_ON);
+                g3.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g3.setColor(borderColor);
                 g3.setStroke(new java.awt.BasicStroke(1f));
-                g3.drawRoundRect(0, 0, w - 1, h - 1, 10, 10);
+                g3.drawRoundRect(0, 0, w - 1, h - 1, RADIO, RADIO);
                 g3.dispose();
             }
             @Override public boolean isOpaque() { return false; }
         };
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createEmptyBorder(8, 14, 7, 8));
+        card.setBorder(BorderFactory.createEmptyBorder(7, 14, 8, 10));
 
-        JLabel lblNombre = new JLabel("<html><b>" + nombre.replace("_", " ") + "</b></html>");
+        // Nombre — envuelto en HTML con ancho fijo para que los nombres largos
+        // pasen a una segunda línea en vez de recortarse contra el borde.
+        JLabel lblNombre = new JLabel(
+            "<html><body style='width:120px'><b>" + nombre.replace("_", " ") + "</b></body></html>");
         lblNombre.setFont(new Font("SansSerif", Font.BOLD, 13));
         lblNombre.setForeground(new Color(22, 30, 60));
         lblNombre.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(lblNombre);
 
-        if (estado != null) {
-            Color colorEstado = estado.contains("✔") ? new Color(25, 120, 40)
-                              : estado.contains("✘") ? new Color(170, 30, 30)
-                              : new Color(55, 90, 190);
-            JLabel lblEstado = new JLabel(estado);
-            lblEstado.setFont(new Font("SansSerif", Font.BOLD, 10));
-            lblEstado.setForeground(colorEstado);
-            lblEstado.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Estado + créditos en UNA sola línea corta — se probaron dos variantes
+        // que fallaron: (1) apiladas en dos líneas desbordan la celda de 1 hora
+        // por unos pixeles; (2) una sola línea con el texto largo + emoji hace
+        // que el motor HTML de Swing la recorte en seco en vez de ajustarla.
+        // La solución robusta es simplemente mantener el texto corto para que
+        // quepa de sobra en una línea de texto plano (sin HTML, sin wrap).
+        if (estado != null || etiquetaCreds != null) {
+            String creditosCortos = etiquetaCreds == null ? null
+                : etiquetaCreds.replace(" créditos", " cr.");
+            String texto = (estado != null && creditosCortos != null) ? estado + " · " + creditosCortos
+                         : estado != null ? estado
+                         : "📚 " + etiquetaCreds;
+            JLabel lblInfo = new JLabel(texto);
+            lblInfo.setFont(new Font("SansSerif", Font.BOLD, 10));
+            lblInfo.setForeground(estado != null ? colorParaEstado(estado) : new Color(80, 60, 160));
+            lblInfo.setAlignmentX(Component.LEFT_ALIGNMENT);
             card.add(Box.createVerticalStrut(3));
-            card.add(lblEstado);
+            card.add(lblInfo);
         }
 
-        // Etiqueta de créditos — solo en el día de inicio
-        if (etiquetaCreds != null) {
-            JLabel lblCreds = new JLabel("📚 " + etiquetaCreds);
-            lblCreds.setFont(new Font("SansSerif", Font.BOLD, 10));
-            lblCreds.setForeground(new Color(80, 60, 160));
-            lblCreds.setAlignmentX(Component.LEFT_ALIGNMENT);
-            card.add(Box.createVerticalStrut(2));
-            card.add(lblCreds);
-        }
-
-        // Hora extra para 6 créditos — indicador visual en viernes
+        // Hora extra para 6 créditos — indicador visual en viernes (esa celda
+        // siempre abarca 2 horas, así que hay espacio de sobra para esta línea).
         if (horaExtra) {
             JLabel lblExtra = new JLabel("⏱ +1h extra");
             lblExtra.setFont(new Font("SansSerif", Font.BOLD, 10));
@@ -1163,8 +1248,8 @@ public class Interfaz extends JFrame {
             card.add(lblExtra);
         }
 
-        card.add(Box.createVerticalStrut(6));
-        JLabel lblHora = new JLabel(inicio + ":00 — " + fin + ":00"
+        card.add(Box.createVerticalStrut(5));
+        JLabel lblHora = new JLabel(inicio + ":00 – " + fin + ":00"
             + (horaExtra ? " (+1h)" : ""));
         lblHora.setFont(new Font("SansSerif", Font.PLAIN, 11));
         lblHora.setForeground(new Color(90, 100, 130));
@@ -1292,14 +1377,29 @@ public class Interfaz extends JFrame {
         m.addRow(new Object[]{"E-M11", "Semántico",
             "MAX_CREDITOS fuera del rango institucional válido (20–35)",
             "MAX_CREDITOS: 40"});
+        m.addRow(new Object[]{"E-M12", "Semántico",
+            "Materia con estado contradictorio (aparece en más de una lista)",
+            "APROBADAS: calculo / REPROBADAS: calculo"});
+        m.addRow(new Object[]{"E-M13", "Semántico",
+            "Materia declarada más de una vez con MATERIA",
+            "MATERIA calculo 8-10 CREDITOS 4 / MATERIA calculo 14-16 CREDITOS 3"});
         return m;
     }
+
+    /** Declaración MATERIA ya resuelta: nombre, horario, créditos y línea de origen. */
+    private record MateriaInfo(String nombre, int horaInicio, int horaFin, int creditos, int linea) {}
+
+    /** Un identificador dentro de APROBADAS/REPROBADAS/CURSANDO, con su línea de origen. */
+    private record Ocurrencia(String nombre, int linea) {}
 
     /**
      * FASE 3 — Análisis semántico.
      *
      * Recorre los tokens del último análisis y verifica restricciones de
-     * negocio académico que la gramática no puede capturar:
+     * negocio académico que la gramática no puede capturar. Todos los mensajes
+     * incluyen número de línea para que la interfaz los resalte en el editor,
+     * igual que los errores léxicos y sintácticos.
+     *
      *   E-M01 Choques de horario entre materias con días en común (según créditos)
      *   E-M02 Materia reprobada sin horario declarado
      *   E-M03 Materia aprobada que se intenta re-inscribir
@@ -1311,7 +1411,8 @@ public class Interfaz extends JFrame {
      *   E-M09 Créditos fuera del rango válido (3–6)
      *   E-M10 Total de créditos insuficiente respecto a MAX_CREDITOS
      *   E-M11 MAX_CREDITOS fuera del rango institucional válido (20–35)
-     *   E-M10 Total de créditos insuficiente respecto a MAX_CREDITOS
+     *   E-M12 Materia con estado contradictorio (aprobada/reprobada/cursando a la vez)
+     *   E-M13 Materia declarada más de una vez con MATERIA
      *
      * @param tokens lista completa de tokens del último análisis léxico
      * @return lista de mensajes de error semántico; vacía si no hay errores
@@ -1319,13 +1420,13 @@ public class Interfaz extends JFrame {
     private List<String> validarSemantica(List<Token> tokens) {
         List<String> errores = new ArrayList<>();
 
-        // ── Extraer datos estructurados de los tokens ─────────────────────────
-        // Cada materia guarda: [nombre, horaInicio, horaFin, creditos]
-        List<String[]> materias   = new ArrayList<>();
-        List<String>   aprobadas  = new ArrayList<>();
-        List<String>   reprobadas = new ArrayList<>();
-        List<String>   cursando   = new ArrayList<>();
-        int            maxCred    = -1;
+        // ── Extraer datos estructurados de los tokens, con línea de origen ────
+        List<MateriaInfo>   materias   = new ArrayList<>();
+        List<Ocurrencia>    aprobadas  = new ArrayList<>();
+        List<Ocurrencia>    reprobadas = new ArrayList<>();
+        List<Ocurrencia>    cursando   = new ArrayList<>();
+        int  maxCred      = -1;
+        int  maxCredLinea = -1;
 
         int i = 0;
         while (i < tokens.size()) {
@@ -1333,31 +1434,35 @@ public class Interfaz extends JFrame {
 
             if (t.esReservada("MATERIA") && i + 6 < tokens.size()) {
                 // MATERIA nombre numero GUION numero CREDITOS numero → 7 tokens
-                materias.add(new String[]{
-                    tokens.get(i + 1).lexema,  // nombre
-                    tokens.get(i + 2).lexema,  // hora inicio
-                    tokens.get(i + 4).lexema,  // hora fin  (i+3 = GUION)
-                    tokens.get(i + 6).lexema   // créditos  (i+5 = RESERVADA "CREDITOS")
-                });
+                try {
+                    materias.add(new MateriaInfo(
+                        tokens.get(i + 1).lexema,
+                        Integer.parseInt(tokens.get(i + 2).lexema),
+                        Integer.parseInt(tokens.get(i + 4).lexema),  // i+3 = GUION
+                        Integer.parseInt(tokens.get(i + 6).lexema),  // i+5 = RESERVADA "CREDITOS"
+                        t.linea));
+                } catch (NumberFormatException ignored) {}
                 i += 7;
 
             } else if (t.esReservada("APROBADAS")
                     || t.esReservada("REPROBADAS")
                     || t.esReservada("CURSANDO")) {
-                List<String> target = t.esReservada("APROBADAS")  ? aprobadas
-                                    : t.esReservada("REPROBADAS") ? reprobadas
-                                    : cursando;
+                List<Ocurrencia> target = t.esReservada("APROBADAS")  ? aprobadas
+                                        : t.esReservada("REPROBADAS") ? reprobadas
+                                        : cursando;
                 i += 2; // saltar RESERVADA y DOS_PUNTOS
                 while (i < tokens.size()) {
                     Token tk = tokens.get(i);
-                    if (tk.tipo.equals("IDENTIFICADOR")) { target.add(tk.lexema); i++; }
+                    if (tk.tipo.equals("IDENTIFICADOR")) { target.add(new Ocurrencia(tk.lexema, tk.linea)); i++; }
                     else if (tk.tipo.equals("COMA"))     { i++; }
                     else break;
                 }
 
             } else if (t.esReservada("MAX_CREDITOS") && i + 2 < tokens.size()) {
-                try { maxCred = Integer.parseInt(tokens.get(i + 2).lexema); }
-                catch (NumberFormatException ignored) {}
+                try {
+                    maxCred = Integer.parseInt(tokens.get(i + 2).lexema);
+                    maxCredLinea = t.linea;
+                } catch (NumberFormatException ignored) {}
                 i += 3;
 
             } else {
@@ -1371,94 +1476,103 @@ public class Interfaz extends JFrame {
             return errores; // sin materias las demás validaciones no aplican
         }
 
+        // ── E-M13: materia declarada más de una vez con MATERIA ──────────────
+        java.util.Map<String, Integer> primeraDeclaracion = new java.util.LinkedHashMap<>();
+        for (MateriaInfo m : materias) {
+            Integer previa = primeraDeclaracion.putIfAbsent(m.nombre(), m.linea());
+            if (previa != null)
+                errores.add(ErrorManager.materiaDuplicada(m.nombre(), previa, m.linea()));
+        }
+
         // ── E-M09: créditos fuera del rango válido (3–6) ─────────────────────
-        for (String[] m : materias) {
-            try {
-                int creds = Integer.parseInt(m[3]);
-                if (creds < 3 || creds > 6)
-                    errores.add(ErrorManager.errorSemantico(
-                        ErrorManager.CodigoSemantico.E_M09,
-                        "\"" + m[0] + "\" tiene " + creds +
-                        " créditos — el valor debe estar entre 3 y 6."));
-            } catch (NumberFormatException ignored) {}
+        for (MateriaInfo m : materias) {
+            if (m.creditos() < 3 || m.creditos() > 6)
+                errores.add(ErrorManager.creditosFueraDeRango(m.nombre(), m.creditos(), m.linea()));
         }
 
         // ── E-M06 y E-M07: rango horario inválido ────────────────────────────
-        for (String[] m : materias) {
-            try {
-                int ini = Integer.parseInt(m[1]);
-                int fin = Integer.parseInt(m[2]);
-                if (ini < 7 || ini > 21)
-                    errores.add(ErrorManager.horarioFueraDeRango(m[0], ini));
-                else if (fin < 7 || fin > 21)
-                    errores.add(ErrorManager.horarioFueraDeRango(m[0], fin));
-                if (fin <= ini)
-                    errores.add(ErrorManager.horaFinInvalida(m[0], ini, fin));
-            } catch (NumberFormatException ignored) {}
+        for (MateriaInfo m : materias) {
+            if (m.horaInicio() < 7 || m.horaInicio() > 21)
+                errores.add(ErrorManager.horarioFueraDeRango(m.nombre(), m.horaInicio(), m.linea()));
+            else if (m.horaFin() < 7 || m.horaFin() > 21)
+                errores.add(ErrorManager.horarioFueraDeRango(m.nombre(), m.horaFin(), m.linea()));
+            if (m.horaFin() <= m.horaInicio())
+                errores.add(ErrorManager.horaFinInvalida(m.nombre(), m.horaInicio(), m.horaFin(), m.linea()));
         }
 
         // ── E-M01: choques de horario (días en común según créditos) ──────────
         for (int a = 0; a < materias.size(); a++) {
             for (int b = a + 1; b < materias.size(); b++) {
-                String[] ma = materias.get(a);
-                String[] mb = materias.get(b);
-                try {
-                    int iniA = Integer.parseInt(ma[1]), finA = Integer.parseInt(ma[2]), credA = Integer.parseInt(ma[3]);
-                    int iniB = Integer.parseInt(mb[1]), finB = Integer.parseInt(mb[2]), credB = Integer.parseInt(mb[3]);
-                    List<String> diasB = diasParaCreditos(credB);
-                    for (String dia : diasParaCreditos(credA)) {
-                        if (!diasB.contains(dia)) continue;
-                        int finEfA = finA + (tieneHoraExtra(credA, dia) ? 1 : 0);
-                        int finEfB = finB + (tieneHoraExtra(credB, dia) ? 1 : 0);
-                        int solapIni = Math.max(iniA, iniB);
-                        int solapFin = Math.min(finEfA, finEfB);
-                        if (solapIni < solapFin)
-                            errores.add(ErrorManager.choqueHorario(
-                                ma[0], mb[0], dia, solapIni, solapFin));
-                    }
-                } catch (NumberFormatException ignored) {}
+                MateriaInfo ma = materias.get(a);
+                MateriaInfo mb = materias.get(b);
+                List<String> diasB = diasParaCreditos(mb.creditos());
+                for (String dia : diasParaCreditos(ma.creditos())) {
+                    if (!diasB.contains(dia)) continue;
+                    int finEfA = ma.horaFin() + (tieneHoraExtra(ma.creditos(), dia) ? 1 : 0);
+                    int finEfB = mb.horaFin() + (tieneHoraExtra(mb.creditos(), dia) ? 1 : 0);
+                    int solapIni = Math.max(ma.horaInicio(), mb.horaInicio());
+                    int solapFin = Math.min(finEfA, finEfB);
+                    if (solapIni < solapFin)
+                        errores.add(ErrorManager.choqueHorario(
+                            ma.nombre(), ma.linea(), mb.nombre(), mb.linea(), dia, solapIni, solapFin));
+                }
             }
         }
 
         // ── E-M02: reprobada sin horario ──────────────────────────────────────
-        for (String rep : reprobadas) {
-            boolean tieneHorario = false;
-            for (String[] m : materias)
-                if (m[0].equals(rep)) { tieneHorario = true; break; }
+        for (Ocurrencia rep : reprobadas) {
+            boolean tieneHorario = materias.stream().anyMatch(m -> m.nombre().equals(rep.nombre()));
             if (!tieneHorario)
-                errores.add(ErrorManager.reprobadaSinHorario(rep));
+                errores.add(ErrorManager.reprobadaSinHorario(rep.nombre(), rep.linea()));
         }
 
         // ── E-M03: aprobada re-inscrita ───────────────────────────────────────
-        for (String[] m : materias)
-            if (aprobadas.contains(m[0]))
-                errores.add(ErrorManager.aprobadaReInscrita(m[0]));
+        java.util.Set<String> nombresAprobadas = new java.util.HashSet<>();
+        for (Ocurrencia ap : aprobadas) nombresAprobadas.add(ap.nombre());
+        for (MateriaInfo m : materias)
+            if (nombresAprobadas.contains(m.nombre()))
+                errores.add(ErrorManager.aprobadaReInscrita(m.nombre(), m.linea()));
 
         // ── E-M04: cursando sin horario ───────────────────────────────────────
-        for (String cur : cursando) {
-            boolean tieneHorario = false;
-            for (String[] m : materias)
-                if (m[0].equals(cur)) { tieneHorario = true; break; }
+        for (Ocurrencia cur : cursando) {
+            boolean tieneHorario = materias.stream().anyMatch(m -> m.nombre().equals(cur.nombre()));
             if (!tieneHorario)
-                errores.add(ErrorManager.cursandoSinHorario(cur));
+                errores.add(ErrorManager.cursandoSinHorario(cur.nombre(), cur.linea()));
+        }
+
+        // ── E-M12: materia con estado contradictorio (2+ listas a la vez) ─────
+        java.util.Set<String> yaReportadas = new java.util.HashSet<>();
+        for (Ocurrencia oc : aprobadas) {
+            String nombre = oc.nombre();
+            if (!yaReportadas.add(nombre)) continue;
+            List<String> estados = new ArrayList<>();
+            if (nombresAprobadas.contains(nombre))                                estados.add("APROBADAS");
+            if (reprobadas.stream().anyMatch(o -> o.nombre().equals(nombre)))     estados.add("REPROBADAS");
+            if (cursando.stream().anyMatch(o -> o.nombre().equals(nombre)))       estados.add("CURSANDO");
+            if (estados.size() > 1)
+                errores.add(ErrorManager.estadoContradictorio(nombre, String.join(", ", estados)));
+        }
+        for (Ocurrencia oc : reprobadas) {
+            String nombre = oc.nombre();
+            if (!yaReportadas.add(nombre)) continue;
+            boolean enCursando = cursando.stream().anyMatch(o -> o.nombre().equals(nombre));
+            if (enCursando)
+                errores.add(ErrorManager.estadoContradictorio(nombre, "REPROBADAS, CURSANDO"));
         }
 
         // ── E-M11: MAX_CREDITOS fuera del rango institucional válido (20–35) ──────
         if (maxCred != -1 && (maxCred < 20 || maxCred > 35)) {
-            errores.add(ErrorManager.maxCreditosFueraDeRango(maxCred));
+            errores.add(ErrorManager.maxCreditosFueraDeRango(maxCred, maxCredLinea));
         } else if (maxCred != -1) {
             // ── E-M05 / E-M10: total de créditos fuera de rango respecto a MAX_CREDITOS ──
             // Solo se compara contra MAX_CREDITOS si su valor declarado es válido.
             int totalCreditos = 0;
-            for (String[] m : materias) {
-                try { totalCreditos += Integer.parseInt(m[3]); }
-                catch (NumberFormatException ignored) {}
-            }
+            for (MateriaInfo m : materias) totalCreditos += m.creditos();
             if (totalCreditos > maxCred) {
-                errores.add(ErrorManager.excesoCreditos(totalCreditos, maxCred));
+                errores.add(ErrorManager.excesoCreditos(totalCreditos, maxCred, maxCredLinea));
             } else if (totalCreditos * 2 < maxCred) {
                 // Insuficiente si el total inscrito es menos del 50% de MAX_CREDITOS
-                errores.add(ErrorManager.creditosInsuficientes(totalCreditos, maxCred));
+                errores.add(ErrorManager.creditosInsuficientes(totalCreditos, maxCred, maxCredLinea));
             }
         }
 
