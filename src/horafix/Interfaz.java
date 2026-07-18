@@ -29,6 +29,13 @@ public class Interfaz extends JFrame {
     // Nodo raíz del último árbol sintáctico generado (null si no hay análisis válido)
     private DefaultMutableTreeNode ultimoArbol;
 
+    // FASE 4 — pestaña de código intermedio (tres direcciones / triplos / cuádruplos)
+    private JTextArea  txtTresDirecciones;
+    private JTable     tblTriplos;
+    private JTable     tblCuadruplos;
+    private JButton    btnGuardarIntermedio;
+    private List<GeneradorCodigoIntermedio.Instruccion> ultimoCodigoIntermedio = new ArrayList<>();
+
     // Tokens del último análisis válido (para la simulación)
     private List<Token> ultimosTokens = new ArrayList<>();
 
@@ -142,6 +149,8 @@ public class Interfaz extends JFrame {
         tabs.addTab("Tokens",              tabTokens);
         tabs.addTab("Tabla de símbolos",   tabSimbolos);
         tabs.addTab("Catálogo de errores", new JScrollPane(tblErrores));
+        // FASE 4 — pestaña de código intermedio (tres direcciones / triplos / cuádruplos)
+        tabs.addTab("Código Intermedio",   crearTabCodigoIntermedio());
 
         JPanel pnlDerecho = new JPanel(new BorderLayout(0, 0));
         pnlDerecho.setBorder(BorderFactory.createTitledBorder(
@@ -155,6 +164,147 @@ public class Interfaz extends JFrame {
         split.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
 
         return split;
+    }
+
+    // ── Pestaña de código intermedio (Fase 4) ─────────────────────────────────
+
+    /**
+     * Construye la pestaña "Código Intermedio": tres sub-pestañas que muestran
+     * la MISMA lista de instrucciones ({@link GeneradorCodigoIntermedio}) en
+     * tres formatos equivalentes — texto de tres direcciones, triplos y
+     * cuádruplos — más un botón para exportarla a un archivo .txt.
+     *
+     * Se genera a partir del mismo código fuente que ya se analiza con el
+     * botón "Analizar" (no hay un campo de entrada separado); se llena en
+     * {@link #analizar()} solo cuando la sintaxis es válida.
+     */
+    private JPanel crearTabCodigoIntermedio() {
+        JPanel panel = new JPanel(new BorderLayout(0, 0));
+
+        txtTresDirecciones = new JTextArea();
+        txtTresDirecciones.setEditable(false);
+        txtTresDirecciones.setFont(new Font("Monospaced", Font.PLAIN, 13));
+        txtTresDirecciones.setMargin(new Insets(8, 10, 8, 10));
+        txtTresDirecciones.setText("Analiza un código fuente válido para generar el código intermedio.");
+
+        tblTriplos = new JTable();
+        tblTriplos.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        tblTriplos.setRowHeight(22);
+        tblTriplos.setGridColor(new Color(210, 210, 210));
+        tblTriplos.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
+        tblTriplos.getTableHeader().setBackground(new Color(240, 240, 240));
+        tblTriplos.setModel(modeloTriplosVacio());
+
+        tblCuadruplos = new JTable();
+        tblCuadruplos.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        tblCuadruplos.setRowHeight(22);
+        tblCuadruplos.setGridColor(new Color(210, 210, 210));
+        tblCuadruplos.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
+        tblCuadruplos.getTableHeader().setBackground(new Color(240, 240, 240));
+        tblCuadruplos.setModel(modeloCuadruplosVacio());
+
+        JTabbedPane subTabs = new JTabbedPane(JTabbedPane.TOP);
+        subTabs.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        subTabs.addTab("Tres direcciones", new JScrollPane(txtTresDirecciones));
+        subTabs.addTab("Triplos",          new JScrollPane(tblTriplos));
+        subTabs.addTab("Cuádruplos",       new JScrollPane(tblCuadruplos));
+        panel.add(subTabs, BorderLayout.CENTER);
+
+        JPanel pnlBoton = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
+        btnGuardarIntermedio = new JButton("  Guardar como .txt  ");
+        btnGuardarIntermedio.setBackground(new Color(60, 179, 113));
+        btnGuardarIntermedio.setForeground(Color.WHITE);
+        btnGuardarIntermedio.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnGuardarIntermedio.setFocusPainted(false);
+        btnGuardarIntermedio.setEnabled(false);
+        btnGuardarIntermedio.addActionListener(e -> guardarCodigoIntermedio());
+        pnlBoton.add(btnGuardarIntermedio);
+        panel.add(pnlBoton, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    /**
+     * Genera el código intermedio del último análisis y llena las tres
+     * vistas de la pestaña "Código Intermedio". Se invoca desde
+     * {@link #analizar()} solo cuando la sintaxis es válida.
+     */
+    private void poblarCodigoIntermedio(List<Token> tokens) {
+        ultimoCodigoIntermedio = GeneradorCodigoIntermedio.generar(tokens);
+
+        txtTresDirecciones.setText(
+            GeneradorCodigoIntermedio.comoTextoTresDirecciones(ultimoCodigoIntermedio));
+        txtTresDirecciones.setCaretPosition(0);
+
+        DefaultTableModel modeloTriplos = modeloTriplosVacio();
+        DefaultTableModel modeloCuadruplos = modeloCuadruplosVacio();
+        int n = 1;
+        for (GeneradorCodigoIntermedio.Instruccion ins : ultimoCodigoIntermedio) {
+            modeloTriplos.addRow(new Object[]{
+                "T" + (n++), nvl(ins.resultado()), ins.op(), nvl(ins.arg1()), nvl(ins.arg2())});
+            modeloCuadruplos.addRow(new Object[]{
+                ins.op(), nvl(ins.arg1()), nvl(ins.arg2()), nvl(ins.resultado())});
+        }
+        tblTriplos.setModel(modeloTriplos);
+        tblCuadruplos.setModel(modeloCuadruplos);
+
+        btnGuardarIntermedio.setEnabled(!ultimoCodigoIntermedio.isEmpty());
+    }
+
+    /** Limpia la pestaña de código intermedio (sin análisis válido que mostrar). */
+    private void limpiarCodigoIntermedio() {
+        ultimoCodigoIntermedio = new ArrayList<>();
+        txtTresDirecciones.setText("Analiza un código fuente válido para generar el código intermedio.");
+        tblTriplos.setModel(modeloTriplosVacio());
+        tblCuadruplos.setModel(modeloCuadruplosVacio());
+        btnGuardarIntermedio.setEnabled(false);
+    }
+
+    /** {@code null} → cadena vacía, para no imprimir "null" en las tablas. */
+    private String nvl(String s) { return s == null ? "" : s; }
+
+    private DefaultTableModel modeloTriplosVacio() {
+        return new DefaultTableModel(new String[]{"#", "Resultado", "Operador", "Arg1", "Arg2"}, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+        };
+    }
+
+    private DefaultTableModel modeloCuadruplosVacio() {
+        return new DefaultTableModel(new String[]{"Operador", "Arg1", "Arg2", "Resultado"}, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+        };
+    }
+
+    /** Exporta el código de tres direcciones del último análisis a un archivo .txt. */
+    private void guardarCodigoIntermedio() {
+        if (ultimoCodigoIntermedio.isEmpty()) return;
+
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Guardar código intermedio");
+        fc.setFileFilter(new FileNameExtensionFilter("Archivos de texto (*.txt)", "txt"));
+        fc.setSelectedFile(new File("codigo_intermedio.txt"));
+
+        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File archivo = fc.getSelectedFile();
+            if (!archivo.getName().toLowerCase().endsWith(".txt"))
+                archivo = new File(archivo.getAbsolutePath() + ".txt");
+
+            if (archivo.exists()) {
+                int ok = JOptionPane.showConfirmDialog(this,
+                        "El archivo '" + archivo.getName() + "' ya existe.\n¿Deseas reemplazarlo?",
+                        "Confirmar sobreescritura", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (ok != JOptionPane.YES_OPTION) return;
+            }
+            try (BufferedWriter writer = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(archivo), StandardCharsets.UTF_8))) {
+                writer.write(GeneradorCodigoIntermedio.comoTextoTresDirecciones(ultimoCodigoIntermedio));
+                JOptionPane.showMessageDialog(this, "Código intermedio guardado en:\n" + archivo.getAbsolutePath(),
+                        "Guardado exitoso", JOptionPane.INFORMATION_MESSAGE);
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "No se pudo guardar el archivo:\n" + e.getMessage(),
+                        "Error de escritura", JOptionPane.ERROR_MESSAGE);
+            }
+        }
     }
 
     // ── Sur: botones + área de resultados ────────────────────────────────────
@@ -435,6 +585,15 @@ public class Interfaz extends JFrame {
                 resultado.append("Análisis semántico  : ✔  Sin inconsistencias detectadas");
             }
 
+            // ── FASE 4: Código intermedio ─────────────────────────────────────
+            // Requiere sintaxis válida (sin ella no hay sentencias completas de
+            // las que derivar instrucciones de tres direcciones).
+            if (sintaxisOk) {
+                poblarCodigoIntermedio(listaTokens);
+            } else {
+                limpiarCodigoIntermedio();
+            }
+
             txtResultados.setText(resultado.toString());
             // Prioridad de color cuando una línea tiene errores de varias fases:
             // léxico (más grave) > sintáctico > semántico (se pinta primero para
@@ -591,6 +750,7 @@ public class Interfaz extends JFrame {
         btnSimulacion.setEnabled(false);
         ultimoArbol = null;
         btnVerArbol.setEnabled(false);
+        limpiarCodigoIntermedio();
         // Devolver el foco al área de código para poder escribir de inmediato
         txtEntrada.requestFocusInWindow();
     }
