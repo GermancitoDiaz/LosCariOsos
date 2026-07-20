@@ -103,9 +103,7 @@ public class Parser {
         return raiz;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // REGLAS GRAMATICALES — un método privado por cada producción de la gramática
-    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
      * <b>programa → sentencia*</b>
@@ -246,7 +244,6 @@ public class Parser {
         consumir("NUMERO", null);
         nodo.add(new DefaultMutableTreeNode("HORARIO → " + desde + "-" + hasta));
 
-        // NUEVO: CREDITOS n — obligatorio al final de cada sentencia MATERIA
         consumir("RESERVADA", "CREDITOS");
         verificarEsNumero("el número de créditos (3–6)");
         String creds = pos < tokens.size() ? tokens.get(pos).lexema : "";
@@ -326,9 +323,7 @@ public class Parser {
         return nodo;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // MÉTODOS AUXILIARES DEL PARSER
-    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
      * Consume el token actual si su tipo (y opcionalmente su lexema) coinciden
@@ -465,11 +460,9 @@ public class Parser {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // VERIFICADORES SEMÁNTICOS — inspeccionan el tipo ANTES de consumir
     // Cada uno llama skipErrorTokens() para saltar ERROR_CHAR intermedios,
     // y lanza mensajes de error específicos según el tipo incorrecto encontrado.
-    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
      * Verifica que el token actual sea IDENTIFICADOR.
@@ -525,9 +518,7 @@ public class Parser {
         // Otro tipo: consumir() dará el mensaje genérico
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // SUGERENCIAS POR DISTANCIA DE LEVENSHTEIN
-    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
      * Busca la keyword más parecida a {@code palabra} usando distancia de Levenshtein.
@@ -584,9 +575,7 @@ public class Parser {
         return dp[a.length()][b.length()];
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // EXCEPCIÓN INTERNA
-    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
      * Excepción checked interna usada para el flujo de control del parser.

@@ -1,20 +1,18 @@
 package horafix;
 
 /**
- * GESTOR CENTRALIZADO DE ERRORES — HoraFix
- *
+ * Punto único de generación de mensajes de error del compilador. El Lexer y
+ * el Parser no arman texto de error por su cuenta: siempre pasan por aquí,
+ * de modo que el formato y los códigos de catálogo se mantienen consistentes
+ * en todo el proyecto. Los códigos deben coincidir con los que se muestran
+ * en {@code Interfaz.crearCatalogoErrores()}.
  */
 public final class ErrorManager {
 
-    private ErrorManager() {}   // clase de utilidad — no instanciable
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // CÓDIGOS DE ERROR — deben coincidir con los de crearCatalogoErrores()
-    //                    en Interfaz.java
-    // ══════════════════════════════════════════════════════════════════════════
+    private ErrorManager() {}
 
     /**
-     * Códigos de errores (E-L01 … E-L04).
+     * Códigos de errores léxicos (E-L01 … E-L04).
      * E-L01 — Carácter(es) no válido(s) en el código fuente     (ej: @, #, $)
      * E-L02 — Número con ceros al inicio                         (ej: 007, 030)
      * E-L03 — Keyword mal escrita; sugerencia disponible         (ej: APROBDA)
@@ -32,7 +30,7 @@ public final class ErrorManager {
     }
 
     /**
-     * Códigos de errores (E-S01 … E-S10).
+     * Códigos de errores sintácticos (E-S01 … E-S10).
      *
      * E-S01 — Instrucción desconocida al inicio de sentencia
      * E-S02 — Lista de materias vacía después de ':'
@@ -62,9 +60,7 @@ public final class ErrorManager {
         CodigoSintactico(String c) { this.codigo = c; }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
     // API GENÉRICA — para crear mensajes directamente con código y detalle
-    // ══════════════════════════════════════════════════════════════════════════
 
     public static String errorLexico(int linea, CodigoLexico codigo, String detalle) {
         return "Error léxico en línea " + linea + " [" + codigo.codigo + "]: " + detalle;
@@ -95,11 +91,9 @@ public final class ErrorManager {
         return "Error sintáctico [" + codigo.codigo + "]: " + detalle;
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
     // MENSAJES LÉXICOS PRE-ARMADOS
     // Cada método corresponde a un caso específico detectado por el Lexer
     // (ERROR_CHAR en Interfaz) o por el Parser (verificarXxx).
-    // ══════════════════════════════════════════════════════════════════════════
 
     /** E-L01: carácter o secuencia de caracteres no válidos (ej: {@code @}, {@code #$%}). */
     public static String charInvalido(int linea, String lexema) {
@@ -128,9 +122,7 @@ public final class ErrorManager {
                 " — use un entero positivo (ej: 7, 8, 10, 13)");
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
     // MENSAJES SINTÁCTICOS PRE-ARMADOS
-    // ══════════════════════════════════════════════════════════════════════════
 
     /** E-S01: el token al inicio de sentencia no es ninguna keyword conocida. */
     public static String instruccionDesconocida(int linea, String encontrado) {
@@ -162,12 +154,8 @@ public final class ErrorManager {
                 "se esperaba " + esperado + " pero se encontró '" + encontrado + "'");
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // CÓDIGOS DE ERRORES SEMÁNTICOS (E-M01 … E-M08)
-    // ══════════════════════════════════════════════════════════════════════════
-
     /**
-     * Códigos de errores  (E-M01 … E-M13).
+     * Códigos de errores semánticos (E-M01 … E-M13).
      *
      * E-M01 — Choque de horario entre dos materias
      * E-M02 — Materia reprobada sin horario asignado
@@ -220,9 +208,7 @@ public final class ErrorManager {
         return "Error semántico [" + codigo.codigo + "]: " + detalle;
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
     // MENSAJES SEMÁNTICOS PRE-ARMADOS
-    // ══════════════════════════════════════════════════════════════════════════
 
     /** E-M01: dos materias con días en común (según créditos) y horas superpuestas. */
     public static String choqueHorario(String mat1, int lineaMat1, String mat2, int lineaMat2,

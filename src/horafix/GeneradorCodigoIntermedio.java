@@ -4,14 +4,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * FASE 4 — GENERADOR DE CÓDIGO INTERMEDIO — HoraFix
+ * Generador de código intermedio de HoraFix.
+ *
+ * HoraFix es un lenguaje declarativo sin expresiones aritméticas ni
+ * asignaciones, así que el código de tres direcciones se genera tratando
+ * cada sentencia como una invocación con argumentos, usando las
+ * instrucciones estándar PARAM/CALL:
+ *
+ * <pre>
+ *   MATERIA calculo 8-10 CREDITOS 5
+ *       →  PARAM 8
+ *          PARAM 10
+ *          PARAM 5
+ *          calculo = CALL MATERIA, 3
+ * </pre>
+ *
+ * La misma lista de instrucciones alimenta las tres vistas de la interfaz
+ * (texto de tres direcciones, triplos y cuádruplos).
  */
 public final class GeneradorCodigoIntermedio {
 
     private GeneradorCodigoIntermedio() {}
 
+    /** Instrucción de tres direcciones: resultado = arg1 op arg2. */
     public record Instruccion(String op, String arg1, String arg2, String resultado) {}
 
+    /** Recorre los tokens del análisis y produce las instrucciones en orden de aparición. */
     public static List<Instruccion> generar(List<Token> tokens) {
         List<Instruccion> codigo = new ArrayList<>();
         int i = 0;
@@ -65,7 +83,7 @@ public final class GeneradorCodigoIntermedio {
         return codigo;
     }
 
-
+    /** Formatea las instrucciones como código de tres direcciones, una por línea. */
     public static String comoTextoTresDirecciones(List<Instruccion> codigo) {
         StringBuilder sb = new StringBuilder();
         for (Instruccion ins : codigo) {

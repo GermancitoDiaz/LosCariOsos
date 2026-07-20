@@ -760,22 +760,16 @@ public class Lexer {
           // fall through
           case 15: break;
           case 7:
-            { // PARCHE MANUAL: este Lexer.java generado quedó desactualizado
-              // respecto a Lexer.flex (falta regenerar con JFlex). "CREDITOS"
-              // cae en esta regla genérica de mayúsculas; se fuerza aquí a
-              // RESERVADA para que coincida con el comportamiento esperado
-              // sin necesitar recompilar las tablas DFA completas.
+            { // "CREDITOS" cae en el estado genérico de mayúsculas; se distingue
+              // aquí para que se reconozca como palabra reservada.
               if (yytext().equals("CREDITOS")) return "RESERVADA," + yytext() + "," + (yyline+1);
               return "IDENTIFICADOR," + yytext() + "," + (yyline+1);
             }
           // fall through
           case 16: break;
           case 8:
-            { // PARCHE MANUAL: la gramática ya no tiene un token de día explícito
-              // (los créditos determinan los días automáticamente). Este estado
-              // seguía reconociendo LUNES..VIERNES por separado en las tablas DFA
-              // generadas; se emite como IDENTIFICADOR igual que cualquier otra
-              // palabra en mayúsculas para no requerir regenerar el DFA con JFlex.
+            { // Los días de la semana ya no son un token propio: los créditos
+              // determinan las columnas del horario automáticamente.
               return "IDENTIFICADOR," + yytext() + "," + (yyline+1);
             }
           // fall through

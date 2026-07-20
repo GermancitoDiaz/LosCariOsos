@@ -10,12 +10,19 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.*;
 import javax.swing.tree.*;
 
+/**
+ * Interfaz gráfica de HoraFix: coordina las cuatro fases del compilador
+ * (léxica, sintáctica, semántica y generación de código intermedio) y
+ * expone sus resultados en la tabla de tokens, la tabla de símbolos, el
+ * catálogo de errores, el árbol sintáctico, la pestaña de código intermedio
+ * y el simulador de horario académico.
+ */
 public class Interfaz extends JFrame {
 
     // ── Componentes de la interfaz ────────────────────────────────────────────
     private JTextArea  txtEntrada;
     private JTable     tblTokens;
-    // NUEVO: tablas de análisis adicionales (pestañas del panel derecho)
+    // Tablas de análisis adicionales (pestañas del panel derecho)
     private JTable     tblErrores;   // catálogo de errores léxicos/sintácticos
     private JTable     tblSimbolos;  // tabla de símbolos reconocidos
     private JTextArea  txtResultados;
@@ -112,7 +119,7 @@ public class Interfaz extends JFrame {
         tblTokens.getTableHeader().setBackground(new Color(240, 240, 240));
         tblTokens.setModel(modeloVacio());
 
-        // NUEVO: tabla catálogo de errores (pestaña 2)
+        // Tabla del catálogo de errores (pestaña 2)
         tblErrores = new JTable();
         tblErrores.setFont(new Font("Monospaced", Font.PLAIN, 12));
         tblErrores.setRowHeight(22);
@@ -122,26 +129,25 @@ public class Interfaz extends JFrame {
         tblErrores.getTableHeader().setBackground(new Color(240, 240, 240));
         tblErrores.setModel(crearCatalogoErrores());
 
-        // NUEVO: tabla de símbolos (pestaña 3)
+        // Tabla de símbolos (pestaña 3)
         tblSimbolos = new JTable();
         tblSimbolos.setFont(new Font("Monospaced", Font.PLAIN, 12));
         tblSimbolos.setRowHeight(22);
         tblSimbolos.setGridColor(new Color(210, 210, 210));
-        // NUEVO: mismos colores que la tabla de tokens; el tipo está en la columna 1
+        // Mismos colores que la tabla de tokens; el tipo está en la columna 1
         tblSimbolos.setDefaultRenderer(Object.class, new TokenCellRenderer(1));
         tblSimbolos.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
         tblSimbolos.getTableHeader().setBackground(new Color(240, 240, 240));
         tblSimbolos.setModel(modeloSimbolosVacio());
 
-        // NUEVO: pestaña "Tokens" agrupa la tabla original y su leyenda
+        // Pestaña "Tokens": tabla original más su leyenda de colores
         JPanel tabTokens = new JPanel(new BorderLayout(0, 0));
         tabTokens.add(new JScrollPane(tblTokens), BorderLayout.CENTER);
         tabTokens.add(crearLeyenda(), BorderLayout.SOUTH);
 
-        // NUEVO: JTabbedPane con las tres vistas de análisis
         JTabbedPane tabs = new JTabbedPane(JTabbedPane.TOP);
         tabs.setFont(new Font("SansSerif", Font.BOLD, 12));
-        // NUEVO: pestaña "Tabla de símbolos" con leyenda idéntica a la de Tokens
+        // Pestaña "Tabla de símbolos" con la misma leyenda que "Tokens"
         JPanel tabSimbolos = new JPanel(new BorderLayout(0, 0));
         tabSimbolos.add(new JScrollPane(tblSimbolos), BorderLayout.CENTER);
         tabSimbolos.add(crearLeyenda(), BorderLayout.SOUTH);
@@ -340,7 +346,7 @@ public class Interfaz extends JFrame {
         btnSimulacion.setFocusPainted(false);
         btnSimulacion.setEnabled(false);
 
-        // NUEVO: botón para ver el árbol sintáctico en ventana emergente
+        // Botón para ver el árbol sintáctico en ventana emergente
         btnVerArbol = new JButton("  Ver Árbol  ");
         btnVerArbol.setBackground(new Color(30, 140, 140));
         btnVerArbol.setForeground(Color.WHITE);
@@ -400,7 +406,7 @@ public class Interfaz extends JFrame {
         agregarChip(panel, "IDENTIFICADOR", new Color(200, 255, 210));
         agregarChip(panel, "NUMERO",        new Color(255, 250, 200));
         agregarChip(panel, "SEPARADOR",     new Color(232, 232, 232));
-        // CAMBIO: solo ERROR_CHAR — las keywords mal escritas ya no generan ERROR_KEYWORD
+        // Solo ERROR_CHAR: las keywords mal escritas se reportan como IDENTIFICADOR
         agregarChip(panel, "ERROR_CHAR", new Color(255, 180, 180)); // rojo — carácter inválido
 
         return panel;
@@ -420,31 +426,17 @@ public class Interfaz extends JFrame {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * PIPELINE PRINCIPAL DEL COMPILADOR — invocado al presionar "Analizar".
+     * Punto de entrada del pipeline de compilación, invocado al presionar
+     * "Analizar". Ejecuta en orden las cuatro fases del compilador —léxica,
+     * sintáctica, semántica y generación de código intermedio— y actualiza
+     * con sus resultados la tabla de tokens, la tabla de símbolos, el panel
+     * de resultados, el resaltado de errores en el editor y la pestaña de
+     * código intermedio.
      *
-     * Ejecuta las dos fases del compilador en secuencia y actualiza todos los
-     * paneles de la interfaz con los resultados:
-     *
-     * <pre>
-     * FASE 1 — Análisis léxico (Lexer)
-     *   • Instancia el Lexer sobre el texto del editor.
-     *   • Llama yylex() en bucle hasta obtener null (fin de entrada).
-     *   • Convierte cada String "TIPO,lexema,linea" en un objeto Token.
-     *   • Llena la tabla de Tokens y cuenta los ERROR_CHAR.
-     *
-     * FASE 2 — Análisis sintáctico (Parser)
-     *   • Siempre se ejecuta, incluso si hay ERROR_CHAR en el stream.
-     *     El Parser salta los ERROR_CHAR con skipErrorTokens() y sigue.
-     *   • Separa los errores del parser en dos listas:
-     *       errLexParser  — mensajes que empiezan "Error léxico"  (E-L03/E-L04)
-     *       errSintPuros  — mensajes que empiezan "Error sintáctico"
-     *
-     * POST-PROCESO
-     *   • Construye el texto de resultados con conteos y listas de errores.
-     *   • Resalta en rojo las líneas del editor que tienen errores.
-     *   • Habilita/deshabilita los botones "Simulación" y "Ver Árbol".
-     *   • Puebla la Tabla de Símbolos con los tokens no-error del análisis.
-     * </pre>
+     * El análisis sintáctico se ejecuta siempre, incluso si hubo errores
+     * léxicos: {@link Parser} salta los tokens ERROR_CHAR y continúa sobre
+     * el resto. El código intermedio, en cambio, solo se genera si la
+     * sintaxis resultó válida.
      */
     private void analizar() {
         try {
@@ -473,13 +465,13 @@ public class Interfaz extends JFrame {
                 modelo.addRow(new Object[]{tipo, lexema, lineaStr});
                 listaTokens.add(new Token(tipo, lexema, Integer.parseInt(lineaStr)));
 
-                // CAMBIO: contar ambos tipos de error (ERROR_KEYWORD y ERROR_CHAR)
+                // Cuenta los tokens de error para el resumen del análisis
                 if (tipo.startsWith("ERROR")) erroresLexicos++;
             }
 
             tblTokens.setModel(modelo);
 
-            // ── NUEVO: Contador de tokens por tipo ───────────────────────────
+            // ── Contador de tokens por tipo ───────────────────────────
             // Cuenta cuántos tokens hay de cada categoría y los muestra en resultados
             java.util.Map<String, Integer> conteo = new java.util.LinkedHashMap<>();
             conteo.put("RESERVADA", 0);
@@ -565,7 +557,7 @@ public class Interfaz extends JFrame {
             btnSimulacion.setEnabled(sintaxisOk);
             btnVerArbol.setEnabled(ultimoArbol != null);
 
-            // NUEVO: poblar tabla de símbolos (el catálogo de errores es estático)
+            // El catálogo de errores es estático; aquí solo se llena la tabla de símbolos
             poblarTablaSimbolos(listaTokens);
 
             // ── FASE 3: Análisis semántico ────────────────────────────────────
@@ -638,7 +630,7 @@ public class Interfaz extends JFrame {
         }
     }
 
-    // NUEVO: abre ventana emergente con el árbol sintáctico en chips de colores
+    // Muestra el árbol sintáctico en una ventana emergente, con nodos coloreados por tipo
     private void mostrarArbol() {
         if (ultimoArbol == null) return;
 
@@ -743,7 +735,7 @@ public class Interfaz extends JFrame {
         txtEntrada.setText("");
         txtResultados.setText("");
         tblTokens.setModel(modeloVacio());
-        // NUEVO: limpiar tabla de símbolos; el catálogo de errores es estático y no se borra
+        // El catálogo de errores es estático y no se borra; la tabla de símbolos sí
         tblSimbolos.setModel(modeloSimbolosVacio());
         txtEntrada.getHighlighter().removeAllHighlights();
         ultimosTokens.clear();
@@ -1377,12 +1369,9 @@ public class Interfaz extends JFrame {
         lblNombre.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(lblNombre);
 
-        // Estado + créditos en UNA sola línea corta — se probaron dos variantes
-        // que fallaron: (1) apiladas en dos líneas desbordan la celda de 1 hora
-        // por unos pixeles; (2) una sola línea con el texto largo + emoji hace
-        // que el motor HTML de Swing la recorte en seco en vez de ajustarla.
-        // La solución robusta es simplemente mantener el texto corto para que
-        // quepa de sobra en una línea de texto plano (sin HTML, sin wrap).
+        // Estado y créditos van en una sola línea de texto plano y abreviado:
+        // en celdas de una hora no hay espacio vertical para dos líneas, y el
+        // motor HTML de Swing no ajusta bien texto largo con emoji.
         if (estado != null || etiquetaCreds != null) {
             String creditosCortos = etiquetaCreds == null ? null
                 : etiquetaCreds.replace(" créditos", " cr.");
@@ -1553,12 +1542,11 @@ public class Interfaz extends JFrame {
     private record Ocurrencia(String nombre, int linea) {}
 
     /**
-     * FASE 3 — Análisis semántico.
-     *
-     * Recorre los tokens del último análisis y verifica restricciones de
-     * negocio académico que la gramática no puede capturar. Todos los mensajes
-     * incluyen número de línea para que la interfaz los resalte en el editor,
-     * igual que los errores léxicos y sintácticos.
+     * Análisis semántico (fase 3). Recorre los tokens del último análisis
+     * y verifica restricciones de negocio académico que la gramática no
+     * puede capturar por sí sola. Todos los mensajes incluyen número de
+     * línea para que la interfaz los resalte en el editor, igual que los
+     * errores léxicos y sintácticos.
      *
      *   E-M01 Choques de horario entre materias con días en común (según créditos)
      *   E-M02 Materia reprobada sin horario declarado
@@ -1783,8 +1771,8 @@ public class Interfaz extends JFrame {
     // ─────────────────────────────────────────────────────────────────────────
 
     private static class TokenCellRenderer extends DefaultTableCellRenderer {
-        // CAMBIO: columna de donde se lee el tipo de token para aplicar el color.
-        // La tabla de tokens usa columna 0; la tabla de símbolos usa columna 1.
+        // Columna de donde se lee el tipo de token para aplicar el color:
+        // la tabla de tokens usa la columna 0, la de símbolos la columna 1.
         private final int tipoCol;
         TokenCellRenderer()         { this(0); }
         TokenCellRenderer(int col)  { this.tipoCol = col; }
@@ -1806,7 +1794,6 @@ public class Interfaz extends JFrame {
                     case "GUION":
                     case "DOS_PUNTOS":
                     case "COMA":          c.setBackground(new Color(232, 232, 232)); break;
-                    // CAMBIO: solo ERROR_CHAR — keywords mal escritas son IDENTIFICADOR
                     case "ERROR_CHAR":    c.setBackground(new Color(255, 180, 180)); break; // rojo
                     default:              c.setBackground(Color.WHITE);              break;
                 }
@@ -1815,7 +1802,7 @@ public class Interfaz extends JFrame {
         }
     }
 
-    // NUEVO: renderer para tblErrores — colorea filas por categoría de error
+    /** Colorea las filas del catálogo de errores según su categoría (léxico, sintáctico, semántico). */
     private static class ErrorCellRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(
@@ -1863,10 +1850,9 @@ public class Interfaz extends JFrame {
             g.setFont(textArea.getFont());
             g.setColor(new Color(120, 120, 120));
 
-            // CAMBIO: modelToView2D obtiene la coordenada Y exacta de cada línea,
-            // respetando los insets del JTextArea (margin top = 6 px) y el espaciado
-            // real entre renglones. Antes se usaba lineHeight * i, lo que desviaba
-            // los números hacia arriba porque no consideraba el margen superior.
+            // modelToView2D da la coordenada Y exacta de cada línea, respetando
+            // los insets del JTextArea (margin top = 6 px). Usar lineHeight * i en
+            // su lugar desalinea los números porque ignora el margen superior.
             FontMetrics fm = g.getFontMetrics();
             int lineCount  = textArea.getLineCount();
             Rectangle clip = g.getClipBounds();
@@ -1888,8 +1874,8 @@ public class Interfaz extends JFrame {
 
         @Override
         public Dimension getPreferredSize() {
-            // CAMBIO: la altura coincide con la del área de texto para que el
-            // scroll del encabezado de fila sincronice correctamente con el contenido
+            // La altura debe igualar la del área de texto para que el scroll del
+            // encabezado de fila se mantenga sincronizado con el contenido
             return new Dimension(36, textArea.getPreferredSize().height);
         }
     }
