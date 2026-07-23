@@ -1494,14 +1494,14 @@ public class Interfaz extends JFrame {
             "MATERIA algebra 8 10 CREDITOS 4"});
         // ── Errores semánticos ───────────────────────────────────────────────
         m.addRow(new Object[]{"E-M01", "Semántico",
-            "Choque de horario entre dos materias (días en común según créditos)",
-            "MATERIA calculo 8-10 CREDITOS 5 / MATERIA fisica 9-11 CREDITOS 3"});
+            "Choque de horario entre dos materias (días en común según créditos) — requiere REGLA no_choques",
+            "REGLA no_choques / MATERIA calculo 8-10 CREDITOS 5 / MATERIA fisica 9-11 CREDITOS 3"});
         m.addRow(new Object[]{"E-M02", "Semántico",
             "Materia reprobada sin horario asignado",
             "REPROBADAS: fisica — sin declaración MATERIA fisica"});
         m.addRow(new Object[]{"E-M03", "Semántico",
-            "Materia aprobada re-inscrita innecesariamente",
-            "APROBADAS: calculo / MATERIA calculo 8-10 CREDITOS 4"});
+            "Materia aprobada re-inscrita innecesariamente — requiere REGLA no_reinscribir_aprobadas",
+            "REGLA no_reinscribir_aprobadas / APROBADAS: calculo / MATERIA calculo 8-10 CREDITOS 4"});
         m.addRow(new Object[]{"E-M04", "Semántico",
             "Materia en CURSANDO sin horario declarado",
             "CURSANDO: algebra — sin declaración MATERIA algebra"});
@@ -1532,6 +1532,12 @@ public class Interfaz extends JFrame {
         m.addRow(new Object[]{"E-M13", "Semántico",
             "Materia declarada más de una vez con MATERIA",
             "MATERIA calculo 8-10 CREDITOS 4 / MATERIA calculo 14-16 CREDITOS 3"});
+        m.addRow(new Object[]{"E-M14", "Semántico",
+            "Seriación incumplida (SERIACION) — requiere REGLA respetar_seriacion",
+            "REGLA respetar_seriacion / SERIACION calculo2 : calculo1 / CURSANDO: calculo2"});
+        m.addRow(new Object[]{"E-M15", "Semántico",
+            "REGLA con nombre desconocido (sugerencia disponible)",
+            "REGLA no_choke"});
         return m;
     }
 
@@ -1541,6 +1547,13 @@ public class Interfaz extends JFrame {
     /** Un identificador dentro de APROBADAS/REPROBADAS/CURSANDO, con su línea de origen. */
     private record Ocurrencia(String nombre, int linea) {}
 
+    /** Declaración SERIACION: materia dependiente y la lista de sus prerequisitos. */
+    private record Seriacion(String materia, int linea, List<Ocurrencia> prerequisitos) {}
+
+    /** Nombres de REGLA reconocidos por el análisis semántico y el efecto que activan. */
+    private static final java.util.Set<String> REGLAS_CONOCIDAS = java.util.Set.of(
+        "no_choques", "no_reinscribir_aprobadas", "respetar_seriacion");
+
     /**
      * Análisis semántico (fase 3). Recorre los tokens del último análisis
      * y verifica restricciones de negocio académico que la gramática no
@@ -1548,9 +1561,9 @@ public class Interfaz extends JFrame {
      * línea para que la interfaz los resalte en el editor, igual que los
      * errores léxicos y sintácticos.
      *
-     *   E-M01 Choques de horario entre materias con días en común (según créditos)
+     *   E-M01 Choques de horario entre materias con días en común (según créditos) — requiere REGLA no_choques
      *   E-M02 Materia reprobada sin horario declarado
-     *   E-M03 Materia aprobada que se intenta re-inscribir
+     *   E-M03 Materia aprobada que se intenta re-inscribir — requiere REGLA no_reinscribir_aprobadas
      *   E-M04 Materia en cursando sin horario declarado
      *   E-M05 Total de créditos supera MAX_CREDITOS
      *   E-M06 Hora fuera del rango válido (7–21)
@@ -1561,6 +1574,12 @@ public class Interfaz extends JFrame {
      *   E-M11 MAX_CREDITOS fuera del rango institucional válido (20–35)
      *   E-M12 Materia con estado contradictorio (aprobada/reprobada/cursando a la vez)
      *   E-M13 Materia declarada más de una vez con MATERIA
+     *   E-M14 Seriación incumplida (SERIACION) — requiere REGLA respetar_seriacion
+     *   E-M15 REGLA con nombre desconocido, con sugerencia por distancia de Levenshtein
+     *
+     * E-M01, E-M03 y E-M14 son "reglas activables": solo se validan si el programa
+     * declara la REGLA correspondiente ({@link #REGLAS_CONOCIDAS}). El resto son
+     * invariantes estructurales de los datos y siempre se validan.
      *
      * @param tokens lista completa de tokens del último análisis léxico
      * @return lista de mensajes de error semántico; vacía si no hay errores
@@ -1569,10 +1588,12 @@ public class Interfaz extends JFrame {
         List<String> errores = new ArrayList<>();
 
         // ── Extraer datos estructurados de los tokens, con línea de origen ────
-        List<MateriaInfo>   materias   = new ArrayList<>();
-        List<Ocurrencia>    aprobadas  = new ArrayList<>();
-        List<Ocurrencia>    reprobadas = new ArrayList<>();
-        List<Ocurrencia>    cursando   = new ArrayList<>();
+        List<MateriaInfo>   materias      = new ArrayList<>();
+        List<Ocurrencia>    aprobadas     = new ArrayList<>();
+        List<Ocurrencia>    reprobadas    = new ArrayList<>();
+        List<Ocurrencia>    cursando      = new ArrayList<>();
+        List<Ocurrencia>    reglas        = new ArrayList<>();
+        List<Seriacion>     seriaciones   = new ArrayList<>();
         int  maxCred      = -1;
         int  maxCredLinea = -1;
 
@@ -1613,6 +1634,24 @@ public class Interfaz extends JFrame {
                 } catch (NumberFormatException ignored) {}
                 i += 3;
 
+            } else if (t.esReservada("REGLA") && i + 1 < tokens.size()) {
+                reglas.add(new Ocurrencia(tokens.get(i + 1).lexema, t.linea));
+                i += 2;
+
+            } else if (t.esReservada("SERIACION") && i + 2 < tokens.size()) {
+                // SERIACION nombre DOS_PUNTOS prereq (',' prereq)* → nombre en i+1, prereqs desde i+3
+                String materiaDep = tokens.get(i + 1).lexema;
+                int lineaDep = t.linea;
+                i += 3;
+                List<Ocurrencia> prereqs = new ArrayList<>();
+                while (i < tokens.size()) {
+                    Token tk = tokens.get(i);
+                    if (tk.tipo.equals("IDENTIFICADOR")) { prereqs.add(new Ocurrencia(tk.lexema, tk.linea)); i++; }
+                    else if (tk.tipo.equals("COMA"))     { i++; }
+                    else break;
+                }
+                seriaciones.add(new Seriacion(materiaDep, lineaDep, prereqs));
+
             } else {
                 i++;
             }
@@ -1632,6 +1671,15 @@ public class Interfaz extends JFrame {
                 errores.add(ErrorManager.materiaDuplicada(m.nombre(), previa, m.linea()));
         }
 
+        // ── E-M15: REGLA con nombre desconocido ──────────────────────────────
+        java.util.Set<String> reglasActivas = new java.util.HashSet<>();
+        for (Ocurrencia r : reglas) {
+            reglasActivas.add(r.nombre());
+            if (!REGLAS_CONOCIDAS.contains(r.nombre())) {
+                errores.add(ErrorManager.reglaDesconocida(r.linea(), r.nombre(), sugerirRegla(r.nombre())));
+            }
+        }
+
         // ── E-M09: créditos fuera del rango válido (3–6) ─────────────────────
         for (MateriaInfo m : materias) {
             if (m.creditos() < 3 || m.creditos() > 6)
@@ -1649,20 +1697,23 @@ public class Interfaz extends JFrame {
         }
 
         // ── E-M01: choques de horario (días en común según créditos) ──────────
-        for (int a = 0; a < materias.size(); a++) {
-            for (int b = a + 1; b < materias.size(); b++) {
-                MateriaInfo ma = materias.get(a);
-                MateriaInfo mb = materias.get(b);
-                List<String> diasB = diasParaCreditos(mb.creditos());
-                for (String dia : diasParaCreditos(ma.creditos())) {
-                    if (!diasB.contains(dia)) continue;
-                    int finEfA = ma.horaFin() + (tieneHoraExtra(ma.creditos(), dia) ? 1 : 0);
-                    int finEfB = mb.horaFin() + (tieneHoraExtra(mb.creditos(), dia) ? 1 : 0);
-                    int solapIni = Math.max(ma.horaInicio(), mb.horaInicio());
-                    int solapFin = Math.min(finEfA, finEfB);
-                    if (solapIni < solapFin)
-                        errores.add(ErrorManager.choqueHorario(
-                            ma.nombre(), ma.linea(), mb.nombre(), mb.linea(), dia, solapIni, solapFin));
+        // Solo se valida si se declaró REGLA no_choques.
+        if (reglasActivas.contains("no_choques")) {
+            for (int a = 0; a < materias.size(); a++) {
+                for (int b = a + 1; b < materias.size(); b++) {
+                    MateriaInfo ma = materias.get(a);
+                    MateriaInfo mb = materias.get(b);
+                    List<String> diasB = diasParaCreditos(mb.creditos());
+                    for (String dia : diasParaCreditos(ma.creditos())) {
+                        if (!diasB.contains(dia)) continue;
+                        int finEfA = ma.horaFin() + (tieneHoraExtra(ma.creditos(), dia) ? 1 : 0);
+                        int finEfB = mb.horaFin() + (tieneHoraExtra(mb.creditos(), dia) ? 1 : 0);
+                        int solapIni = Math.max(ma.horaInicio(), mb.horaInicio());
+                        int solapFin = Math.min(finEfA, finEfB);
+                        if (solapIni < solapFin)
+                            errores.add(ErrorManager.choqueHorario(
+                                ma.nombre(), ma.linea(), mb.nombre(), mb.linea(), dia, solapIni, solapFin));
+                    }
                 }
             }
         }
@@ -1675,11 +1726,28 @@ public class Interfaz extends JFrame {
         }
 
         // ── E-M03: aprobada re-inscrita ───────────────────────────────────────
+        // Solo se valida si se declaró REGLA no_reinscribir_aprobadas.
         java.util.Set<String> nombresAprobadas = new java.util.HashSet<>();
         for (Ocurrencia ap : aprobadas) nombresAprobadas.add(ap.nombre());
-        for (MateriaInfo m : materias)
-            if (nombresAprobadas.contains(m.nombre()))
-                errores.add(ErrorManager.aprobadaReInscrita(m.nombre(), m.linea()));
+        if (reglasActivas.contains("no_reinscribir_aprobadas")) {
+            for (MateriaInfo m : materias)
+                if (nombresAprobadas.contains(m.nombre()))
+                    errores.add(ErrorManager.aprobadaReInscrita(m.nombre(), m.linea()));
+        }
+
+        // ── E-M14: seriación incumplida ────────────────────────────────────────
+        // Solo se valida si se declaró REGLA respetar_seriacion.
+        if (reglasActivas.contains("respetar_seriacion")) {
+            for (Seriacion s : seriaciones) {
+                boolean seCursaAhora = cursando.stream().anyMatch(o -> o.nombre().equals(s.materia()))
+                        || materias.stream().anyMatch(m -> m.nombre().equals(s.materia()));
+                if (!seCursaAhora) continue;
+                for (Ocurrencia prereq : s.prerequisitos()) {
+                    if (!nombresAprobadas.contains(prereq.nombre()))
+                        errores.add(ErrorManager.seriacionIncumplida(s.materia(), prereq.nombre(), prereq.linea()));
+                }
+            }
+        }
 
         // ── E-M04: cursando sin horario ───────────────────────────────────────
         for (Ocurrencia cur : cursando) {
@@ -1725,6 +1793,44 @@ public class Interfaz extends JFrame {
         }
 
         return errores;
+    }
+
+    /**
+     * Busca el nombre de regla conocido más parecido a {@code nombre} usando
+     * distancia de Levenshtein, para sugerirlo en el mensaje E-M15 (ej: "no_choke" → "no_choques").
+     *
+     * @param nombre nombre de regla tal como fue escrito por el estudiante
+     * @return la regla conocida más cercana si la distancia es aceptable, {@code null} si no hay
+     */
+    private String sugerirRegla(String nombre) {
+        String mejorSugerencia = null;
+        int mejorDistancia = Integer.MAX_VALUE;
+        for (String regla : REGLAS_CONOCIDAS) {
+            int dist = levenshtein(nombre, regla);
+            int umbral = Math.max(2, regla.length() / 3);
+            if (dist <= umbral && dist < mejorDistancia) {
+                mejorDistancia = dist;
+                mejorSugerencia = regla;
+            }
+        }
+        return mejorSugerencia;
+    }
+
+    /** Distancia de Levenshtein entre {@code a} y {@code b}, usada por {@link #sugerirRegla(String)}. */
+    private static int levenshtein(String a, String b) {
+        int[][] dp = new int[a.length() + 1][b.length() + 1];
+        for (int i = 0; i <= a.length(); i++) dp[i][0] = i;
+        for (int j = 0; j <= b.length(); j++) dp[0][j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            for (int j = 1; j <= b.length(); j++) {
+                if (a.charAt(i - 1) == b.charAt(j - 1)) {
+                    dp[i][j] = dp[i - 1][j - 1];
+                } else {
+                    dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], Math.min(dp[i - 1][j], dp[i][j - 1]));
+                }
+            }
+        }
+        return dp[a.length()][b.length()];
     }
 
     /** Crea un modelo vacío con las columnas de la Tabla de Símbolos. */

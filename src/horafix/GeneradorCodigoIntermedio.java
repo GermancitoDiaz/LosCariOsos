@@ -76,6 +76,23 @@ public final class GeneradorCodigoIntermedio {
                 codigo.add(new Instruccion("CALL", "REGLA", "1", "REGLA"));
                 i += 2;
 
+            } else if (t.esReservada("SERIACION") && i + 2 < tokens.size()) {
+                // SERIACION nombre DOS_PUNTOS prereq (',' prereq)* → nombre en i+1, prereqs desde i+3
+                String nombre = tokens.get(i + 1).lexema;
+                i += 3;
+                int n = 0;
+                while (i < tokens.size()) {
+                    Token tk = tokens.get(i);
+                    if (tk.tipo.equals("IDENTIFICADOR")) {
+                        codigo.add(new Instruccion("PARAM", tk.lexema, null, null));
+                        n++;
+                        i++;
+                    } else if (tk.tipo.equals("COMA")) {
+                        i++;
+                    } else break;
+                }
+                codigo.add(new Instruccion("CALL", "SERIACION", String.valueOf(n), nombre));
+
             } else {
                 i++;
             }

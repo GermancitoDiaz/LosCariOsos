@@ -59,9 +59,32 @@ CURSANDO: calculo2
 MAX_CREDITOS: 30
 MATERIA estructuras_datos 10-12 CREDITOS 4
 MATERIA fisica1 8-10 CREDITOS 3
+SERIACION calculo2 : calculo1
 REGLA no_choques
 REGLA respetar_seriacion
 ```
+
+### Reglas activables (`REGLA`)
+
+`REGLA` activa validaciones semánticas opcionales — si no se declara, el chequeo correspondiente **no se ejecuta**. Solo se reconocen tres nombres:
+
+| Nombre de regla | Activa |
+|---|---|
+| `no_choques` | E-M01 (choque de horario entre materias) |
+| `no_reinscribir_aprobadas` | E-M03 (materia aprobada re-inscrita) |
+| `respetar_seriacion` | E-M14 (seriación incumplida, ver `SERIACION` abajo) |
+
+Un nombre de regla que no está en esta tabla genera **E-M15**, con sugerencia por distancia de Levenshtein (ej. `REGLA no_choke` → "¿quiso escribir 'no_choques'?"). El resto de los errores semánticos (rangos, duplicados, estados contradictorios, etc.) son invariantes estructurales y siempre se validan, sin importar qué reglas se declaren.
+
+### Seriación (`SERIACION`)
+
+Declara los prerequisitos de una materia:
+
+```
+SERIACION calculo2 : calculo1
+```
+
+Si `calculo2` aparece en `CURSANDO` o tiene una declaración `MATERIA` sin que `calculo1` esté en `APROBADAS`, se reporta E-M14 — pero solo si el programa declaró `REGLA respetar_seriacion`.
 
 Una declaración `MATERIA` no incluye el día de la semana: los créditos lo determinan automáticamente, siempre a partir del lunes. Cada crédito equivale a una hora de clase en un día distinto:
 
@@ -83,6 +106,7 @@ sentencia         → sent_aprobadas
                   | sent_max_creditos
                   | sent_materia
                   | sent_regla
+                  | sent_seriacion
 
 sent_aprobadas    → APROBADAS    ':' lista_materias
 sent_reprobadas   → REPROBADAS   ':' lista_materias
@@ -90,6 +114,7 @@ sent_cursando     → CURSANDO     ':' lista_materias
 sent_max_creditos → MAX_CREDITOS ':' NUMERO
 sent_materia      → MATERIA IDENTIFICADOR NUMERO '-' NUMERO CREDITOS NUMERO
 sent_regla        → REGLA IDENTIFICADOR
+sent_seriacion    → SERIACION IDENTIFICADOR ':' lista_materias
 
 lista_materias    → IDENTIFICADOR (',' IDENTIFICADOR)*
 ```
@@ -102,7 +127,7 @@ El analizador léxico (`Lexer.flex`, generado a `Lexer.java` mediante JFlex) rec
 
 | Token | Patrón | Ejemplo |
 |---|---|---|
-| `RESERVADA` | `APROBADAS`, `REPROBADAS`, `CURSANDO`, `MAX_CREDITOS`, `MATERIA`, `REGLA`, `CREDITOS` | `MATERIA` |
+| `RESERVADA` | `APROBADAS`, `REPROBADAS`, `CURSANDO`, `MAX_CREDITOS`, `MATERIA`, `REGLA`, `CREDITOS`, `SERIACION` | `MATERIA` |
 | `IDENTIFICADOR` | `[a-z][a-zA-Z0-9_]*` | `fisica1`, `calculo` |
 | `NUMERO` | `0` \| `[1-9][0-9]*` (sin ceros a la izquierda) | `8`, `30` |
 | `DOS_PUNTOS` | `:` | `:` |
@@ -172,6 +197,10 @@ Verifica restricciones de negocio académico que la gramática, por sí sola, no
 | E-M11 | `MAX_CREDITOS` fuera del rango institucional válido (20–35) |
 | E-M12 | Una materia aparece en más de una lista de estatus a la vez |
 | E-M13 | Materia declarada más de una vez con `MATERIA` |
+| E-M14 | Seriación incumplida — requiere `REGLA respetar_seriacion` |
+| E-M15 | `REGLA` con nombre desconocido, con sugerencia por distancia de Levenshtein |
+
+E-M01 y E-M03 también son "reglas activables": solo se validan si el programa declara `REGLA no_choques` / `REGLA no_reinscribir_aprobadas` respectivamente. Ver [Reglas activables](#reglas-activables-regla) arriba. El resto de los códigos son invariantes estructurales de los datos y siempre se validan.
 
 ---
 

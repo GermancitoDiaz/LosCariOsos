@@ -128,7 +128,7 @@ public final class ErrorManager {
     public static String instruccionDesconocida(int linea, String encontrado) {
         return errorSintactico(linea, CodigoSintactico.E_S01,
                 "se esperaba una instrucción (APROBADAS, REPROBADAS, CURSANDO, " +
-                "MAX_CREDITOS, MATERIA, REGLA) pero se encontró '" + encontrado + "'");
+                "MAX_CREDITOS, MATERIA, REGLA, SERIACION) pero se encontró '" + encontrado + "'");
     }
 
     /** E-S06: keyword reconocida pero en una posición que la gramática no permite. */
@@ -170,6 +170,9 @@ public final class ErrorManager {
      * E-M11 — MAX_CREDITOS fuera del rango institucional válido (20–35)
      * E-M12 — Materia con estado contradictorio (aparece en más de una lista)
      * E-M13 — Materia declarada más de una vez con MATERIA
+     * E-M14 — Seriación incumplida (materia cursada sin aprobar su prerequisito),
+     *         solo se valida si se declaró REGLA respetar_seriacion
+     * E-M15 — REGLA con nombre desconocido, con sugerencia por distancia de Levenshtein
      */
     public enum CodigoSemantico {
         E_M01("E-M01"),
@@ -184,7 +187,9 @@ public final class ErrorManager {
         E_M10("E-M10"),
         E_M11("E-M11"),
         E_M12("E-M12"),
-        E_M13("E-M13");
+        E_M13("E-M13"),
+        E_M14("E-M14"),
+        E_M15("E-M15");
 
         /** Código de catálogo tal como aparece en la interfaz (ej: "E-M01"). */
         public final String codigo;
@@ -303,5 +308,25 @@ public final class ErrorManager {
         return errorSemantico(lineaDuplicada, CodigoSemantico.E_M13,
             "\"" + materia + "\" ya fue declarada con MATERIA en la línea " + primeraLinea +
             " — elimina la declaración duplicada o usa un nombre distinto.");
+    }
+
+    /**
+     * E-M14: la materia se está cursando (o tiene horario declarado) sin haber
+     * aprobado uno de sus prerequisitos declarados con SERIACION.
+     * Solo se reporta si el programa declaró {@code REGLA respetar_seriacion}.
+     */
+    public static String seriacionIncumplida(String materia, String prerequisito, int linea) {
+        return errorSemantico(linea, CodigoSemantico.E_M14,
+            "\"" + materia + "\" requiere haber aprobado \"" + prerequisito +
+            "\" (declarado con SERIACION) antes de cursarla — agrega \"" + prerequisito +
+            "\" a APROBADAS o quita \"" + materia + "\" de tu carga hasta aprobarlo.");
+    }
+
+    /** E-M15: REGLA con un nombre que no está en el catálogo de reglas conocidas. */
+    public static String reglaDesconocida(int linea, String encontrada, String sugerencia) {
+        return errorSemantico(linea, CodigoSemantico.E_M15,
+            "\"" + encontrada + "\" no es una regla reconocida (no_choques, " +
+            "no_reinscribir_aprobadas, respetar_seriacion)" +
+            (sugerencia != null ? " — ¿quiso escribir \"" + sugerencia + "\"?" : ""));
     }
 }

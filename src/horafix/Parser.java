@@ -18,6 +18,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
  *                 | sent_max_creditos
  *                 | sent_materia
  *                 | sent_regla
+ *                 | sent_seriacion
  *
  * sent_aprobadas   → APROBADAS   ':' lista_materias
  * sent_reprobadas  → REPROBADAS  ':' lista_materias
@@ -25,6 +26,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
  * sent_max_creditos→ MAX_CREDITOS ':' NUMERO
  * sent_materia     → MATERIA IDENTIFICADOR NUMERO '-' NUMERO CREDITOS NUMERO
  * sent_regla       → REGLA IDENTIFICADOR
+ * sent_seriacion   → SERIACION IDENTIFICADOR ':' lista_materias
  *
  * lista_materias   → IDENTIFICADOR (',' IDENTIFICADOR)*
  * </pre>
@@ -64,7 +66,7 @@ public class Parser {
      * escritas (ej: "APROBDA" → sugiere "APROBADAS") mediante Levenshtein.
      */
     private static final String[] PALABRAS_RESERVADAS = {
-        "APROBADAS", "REPROBADAS", "CURSANDO", "MAX_CREDITOS", "MATERIA", "REGLA", "CREDITOS"
+        "APROBADAS", "REPROBADAS", "CURSANDO", "MAX_CREDITOS", "MATERIA", "REGLA", "CREDITOS", "SERIACION"
     };
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -164,6 +166,7 @@ public class Parser {
             case "MAX_CREDITOS": return analizarMaxCreditos();
             case "MATERIA":      return analizarMateria();
             case "REGLA":        return analizarRegla();
+            case "SERIACION":    return analizarSeriacion();
             default:
                 throw new ParseException(
                     ErrorManager.keywordInesperada(actual.linea, actual.lexema)
@@ -267,6 +270,31 @@ public class Parser {
         String nombre = pos < tokens.size() ? tokens.get(pos).lexema : "";
         consumir("IDENTIFICADOR", null);
         nodo.add(new DefaultMutableTreeNode("ID → " + nombre));
+        return nodo;
+    }
+
+    /**
+     * <b>sent_seriacion → SERIACION IDENTIFICADOR ':' lista_materias</b>
+     *
+     * Declara los prerequisitos de una materia: el identificador antes de ':'
+     * es la materia dependiente, y la lista_materias son sus prerequisitos.
+     * Solo se valida en la fase semántica si se declaró {@code REGLA respetar_seriacion}
+     * (ver {@link ErrorManager.CodigoSemantico#E_M14}).
+     * Ejemplo: {@code SERIACION calculo2 : calculo1}
+     *
+     * @return nodo "sent_seriacion" con la materia dependiente y sus prerequisitos
+     * @throws ParseException si falta el identificador, ':' o la lista de prerequisitos
+     */
+    private DefaultMutableTreeNode analizarSeriacion() throws ParseException {
+        DefaultMutableTreeNode nodo = new DefaultMutableTreeNode("sent_seriacion");
+        consumir("RESERVADA", "SERIACION");
+        nodo.add(new DefaultMutableTreeNode("SERIACION"));
+        verificarEsIdentificador("el nombre de la materia dependiente");
+        String nombre = pos < tokens.size() ? tokens.get(pos).lexema : "";
+        consumir("IDENTIFICADOR", null);
+        nodo.add(new DefaultMutableTreeNode("ID → " + nombre));
+        consumir("DOS_PUNTOS", ":");
+        nodo.add(analizarListaMaterias());
         return nodo;
     }
 

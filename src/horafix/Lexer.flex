@@ -52,6 +52,10 @@ NUMERO = 0|[1-9]{DIGITO}*
     return "RESERVADA," + yytext() + "," + (yyline+1);
 }
 
+"SERIACION" {
+    return "RESERVADA," + yytext() + "," + (yyline+1);
+}
+
 "MAX_CREDITOS" {
     return "RESERVADA," + yytext() + "," + (yyline+1);
 }
